@@ -3,10 +3,13 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:task_management_flutter/features/auth/data/datasources/local/user_dao.dart';
+
 
 part 'app_database.g.dart';
 
 /// Users table for caching
+@DataClassName('UserEntity')
 class Users extends Table {
   TextColumn get id => text()();
   TextColumn get email => text()();
@@ -22,6 +25,7 @@ class Users extends Table {
 }
 
 /// Workspaces table for caching
+@DataClassName('WorkspaceEntity')
 class Workspaces extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
@@ -35,7 +39,7 @@ class Workspaces extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Users, Workspaces])
+@DriftDatabase(tables: [Users, Workspaces], daos: [UserDao])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 

@@ -1,23 +1,31 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:task_management_flutter/core/config/api_config.dart';
-import 'package:task_management_flutter/core/error/exceptions.dart';
+import 'auth_interceptor.dart';
+import 'network_interceptor.dart';
 
 class ApiClient {
-  final Dio _dio;
+  final Dio dio;
+  final NetworkInterceptor _networkInterceptor;
+  final AuthInterceptor _authInterceptor;
 
-  ApiClient(this._dio) {
+  ApiClient({
+    required Dio dioInstance,
+    required NetworkInterceptor networkInterceptor,
+    required AuthInterceptor authInterceptor,
+  })  : dio = dioInstance,
+        _networkInterceptor = networkInterceptor,
+        _authInterceptor = authInterceptor {
     _setupInterceptors();
   }
 
-  /// Build the full URL based on whether it's an auth endpoint
-  String _buildUrl(String endpoint, bool useAuthBaseUrl) {
-    return useAuthBaseUrl ? '${ApiConfig.authBaseUrl}$endpoint' : endpoint;
-  }
-
-  /// Setup Dio interceptors for logging and error handling
+  /// Setup Dio interceptors
   void _setupInterceptors() {
-    _dio.interceptors.add(
+    // Add custom interceptors
+    dio.interceptors.add(_networkInterceptor);
+    dio.interceptors.add(_authInterceptor);
+
+    // Add logging interceptor
+    dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
           if (kDebugMode) {
@@ -45,177 +53,5 @@ class ApiClient {
         },
       ),
     );
-  }
-
-  /// Set access token for authenticated requests
-  void setAccessToken(String? token) {
-    if (token != null) {
-      _dio.options.headers['Authorization'] = 'Bearer $token';
-    } else {
-      _dio.options.headers.remove('Authorization');
-    }
-  }
-
-  String? get accessToken {
-    final auth = _dio.options.headers['Authorization'];
-    if (auth is String && auth.startsWith('Bearer ')) {
-      return auth.substring(7);
-    }
-    return null;
-  }
-
-  /// GET request
-  Future<T> get<T>(
-      String endpoint, {
-        Map<String, dynamic>? queryParameters,
-        Map<String, String>? headers,
-        bool useAuthBaseUrl = false,
-      }) async {
-    try {
-      final response = await _dio.get<T>(
-        _buildUrl(endpoint, useAuthBaseUrl),
-        queryParameters: queryParameters,
-        options: Options(
-          headers: headers,
-        ),
-      );
-      return response.data as T;
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
-
-  /// POST request
-  Future<T> post<T>(
-      String endpoint, {
-        dynamic body,
-        Map<String, dynamic>? queryParameters,
-        Map<String, String>? headers,
-        bool useAuthBaseUrl = false,
-      }) async {
-    try {
-      final response = await _dio.post<T>(
-        _buildUrl(endpoint, useAuthBaseUrl),
-        data: body,
-        queryParameters: queryParameters,
-        options: Options(
-          headers: headers,
-        ),
-      );
-      return response.data as T;
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
-
-  /// PATCH request
-  Future<T> patch<T>(
-      String endpoint, {
-        dynamic body,
-        Map<String, dynamic>? queryParameters,
-        Map<String, String>? headers,
-        bool useAuthBaseUrl = false,
-      }) async {
-    try {
-      final response = await _dio.patch<T>(
-        _buildUrl(endpoint, useAuthBaseUrl),
-        data: body,
-        queryParameters: queryParameters,
-        options: Options(
-          headers: headers,
-        ),
-      );
-      return response.data as T;
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
-
-  /// DELETE request
-  Future<T> delete<T>(
-      String endpoint, {
-        Map<String, dynamic>? queryParameters,
-        Map<String, String>? headers,
-        bool useAuthBaseUrl = false,
-      }) async {
-    try {
-      final response = await _dio.delete<T>(
-        _buildUrl(endpoint, useAuthBaseUrl),
-        queryParameters: queryParameters,
-        options: Options(
-          headers: headers,
-        ),
-      );
-      return response.data as T;
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
-
-  /// Handle Dio errors and convert to custom exceptions
-  Exception _handleDioError(DioException error) {
-    final response = error.response;
-    final statusCode = response?.statusCode ?? 0;
-
-    // Extract error message from response
-    String message = 'Request failed';
-    if (response?.data != null) {
-      final data = response!.data;
-      if (data is Map<String, dynamic>) {
-        message = data['message'] ??
-            data['error_description'] ??
-            data['msg'] ??
-            message;
-      } else if (data is String) {
-        message = data;
-      }
-    }
-
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return ServerException('Connection timeout', statusCode);
-
-      case DioExceptionType.badResponse:
-        return _createExceptionFromStatusCode(statusCode, message);
-
-      case DioExceptionType.cancel:
-        return ServerException('Request cancelled', statusCode);
-
-      case DioExceptionType.connectionError:
-        return ServerException('Network error: ${error.message}', statusCode);
-
-      case DioExceptionType.unknown:
-      default:
-        return ServerException('Unknown error: ${error.message}', statusCode);
-    }
-  }
-
-  /// Create appropriate exception based on status code
-  Exception _createExceptionFromStatusCode(int statusCode, String message) {
-    switch (statusCode) {
-      case 400:
-        return ServerException('Bad Request: $message', 400);
-      case 401:
-        return UnauthorizedException('Unauthorized: $message');
-      case 403:
-        return ServerException('Forbidden: $message', 403);
-      case 404:
-        return ServerException('Not Found: $message', 404);
-      case 409:
-        return ServerException('Conflict: $message', 409);
-      case 422:
-        return ValidationException('Validation Error: $message');
-      case 429:
-        return ServerException('Too Many Requests: $message', 429);
-      case 500:
-      case 502:
-      case 503:
-      case 504:
-        return ServerException('Server Error: $message', statusCode);
-      default:
-        return ServerException('Request failed: $message', statusCode);
-    }
   }
 }
