@@ -2,10 +2,14 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:task_management_flutter/core/error/exceptions.dart';
 import 'package:task_management_flutter/core/error/failures.dart';
+import 'package:task_management_flutter/core/utils/type_defs.dart';
 
 class ErrorHandler {
+  ErrorHandler._();
+
   static Failure handle(dynamic error) {
     if (error is DioException) {
       return _handleDioError(error);
@@ -28,18 +32,39 @@ class ErrorHandler {
     }
   }
 
+  /// Executes an async [action] using TaskEither.
+  static TaskResult<T> execute<T>(Future<T> Function() action) {
+    return TaskEither.tryCatch(
+      () async => await action(),
+      (error, stackTrace) => handle(error),
+    );
+  }
+
+  /// Executes an async [action] and returns the result.
+  /// If an exception occurs, it returns null and logs the error.
+  static Future<T?> executeOrNull<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } catch (e) {
+      debugPrint('⚠️ Ignored error in executeOrNull: $e');
+      return null;
+    }
+  }
+
   static Failure _handleDioError(DioException error) {
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.connectionError:
-        return const Failure.networkFailure('Connection timeout or network error');
-        
+        return const Failure.networkFailure(
+          'Connection timeout or network error',
+        );
+
       case DioExceptionType.badResponse:
         final statusCode = error.response?.statusCode;
         final message = _extractErrorMessage(error.response?.data);
-        
+
         if (statusCode == 401) {
           return Failure.unauthorizedFailure(message);
         } else if (statusCode == 422) {
@@ -49,10 +74,10 @@ class ErrorHandler {
         } else {
           return Failure.serverFailure(message, statusCode);
         }
-        
+
       case DioExceptionType.cancel:
         return const Failure.serverFailure('Request cancelled');
-        
+
       case DioExceptionType.unknown:
       default:
         return Failure.unknownFailure(error.message ?? 'Unknown Dio error');
@@ -62,7 +87,8 @@ class ErrorHandler {
   static String _extractErrorMessage(dynamic data) {
     String message = 'Request failed';
     if (data is Map<String, dynamic>) {
-      message = data['message'] ??
+      message =
+          data['message'] ??
           data['error_description'] ??
           data['msg'] ??
           message;
@@ -73,9 +99,9 @@ class ErrorHandler {
   }
 
   static Future<void> handleSafely(
-      Future<void> Function() operation,
-      String context,
-      ) async {
+    Future<void> Function() operation,
+    String context,
+  ) async {
     try {
       await operation();
     } catch (e, stackTrace) {

@@ -3,12 +3,12 @@ import 'package:task_management_flutter/features/auth/data/models/auth_models.da
 import 'package:task_management_flutter/features/auth/data/models/user_models.dart';
 
 abstract class AuthRepository {
-  FutureEither<User> signUp(SignUpRequest request);
-  FutureEither<User> signIn(SignInRequest request);
-  FutureEither<void> signOut();
-  FutureEither<User> getCurrentUser();
-  FutureEither<User> updateProfile(String userId, UpdateProfileRequest request);
-  FutureEither<bool> isUsernameAvailable(String username);
+  TaskResult<User> signUp(SignUpRequest request);
+  TaskResult<User> signIn(SignInRequest request);
+  TaskResult<void> signOut();
+  TaskResult<User> getCurrentUser();
+  TaskResult<User> updateProfile(String userId, UpdateProfileRequest request);
+  TaskResult<bool> isUsernameAvailable(String username);
   User? getCachedUser();
   bool isLoggedIn();
 }

@@ -20,7 +20,7 @@ class ApiClient {
 
   /// Setup Dio interceptors
   void _setupInterceptors() {
-    // Add custom interceptors
+    // Order matters! Network check -> Auth -> Request
     dio.interceptors.add(_networkInterceptor);
     dio.interceptors.add(_authInterceptor);
 

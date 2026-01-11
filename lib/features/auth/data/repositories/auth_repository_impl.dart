@@ -1,7 +1,6 @@
-import 'package:dartz/dartz.dart';
-import 'package:task_management_flutter/core/error/failures.dart';
+import 'package:task_management_flutter/core/error/exceptions.dart';
 import 'package:task_management_flutter/core/services/token_service.dart';
-import 'package:task_management_flutter/core/utils/error_handler.dart';
+import 'package:task_management_flutter/core/error/error_handler.dart';
 import 'package:task_management_flutter/core/utils/type_defs.dart';
 import 'package:task_management_flutter/features/auth/data/datasources/local/auth_local_datasource.dart';
 import 'package:task_management_flutter/features/auth/data/datasources/remote/auth_remote_datasource.dart';
@@ -14,15 +13,17 @@ class AuthRepositoryImpl implements AuthRepository {
   final AuthLocalDataSource _localDataSource;
   final TokenService _tokenService;
 
-  AuthRepositoryImpl(
-      this._remoteDataSource,
-      this._localDataSource,
-      this._tokenService,
-      );
+  AuthRepositoryImpl({
+    required AuthRemoteDataSource remoteDataSource,
+    required AuthLocalDataSource localDataSource,
+    required TokenService tokenService,
+  }) : _remoteDataSource = remoteDataSource,
+       _localDataSource = localDataSource,
+       _tokenService = tokenService;
 
   @override
-  FutureEither<User> signUp(SignUpRequest request) async {
-    try {
+  TaskResult<User> signUp(SignUpRequest request) {
+    return ErrorHandler.execute(() async {
       // Get auth response with tokens
       final authResponse = await _remoteDataSource.signUp(request);
 
@@ -35,17 +36,17 @@ class AuthRepositoryImpl implements AuthRepository {
 
       // Get user profile
       final user = await _remoteDataSource.getCurrentUser();
-      await _localDataSource.cacheUser(user);
 
-      return Right(user);
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+      // Cache user locally (optional, don't fail if this fails)
+      await ErrorHandler.executeOrNull(() => _localDataSource.cacheUser(user));
+
+      return user;
+    });
   }
 
   @override
-  FutureEither<User> signIn(SignInRequest request) async {
-    try {
+  TaskResult<User> signIn(SignInRequest request) {
+    return ErrorHandler.execute(() async {
       // Get auth response with tokens
       final authResponse = await _remoteDataSource.signIn(request);
 
@@ -58,89 +59,82 @@ class AuthRepositoryImpl implements AuthRepository {
 
       // Get user profile
       final user = await _remoteDataSource.getCurrentUser();
-      await _localDataSource.cacheUser(user);
 
-      return Right(user);
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+      // Cache user locally (optional, don't fail if this fails)
+      await ErrorHandler.executeOrNull(() => _localDataSource.cacheUser(user));
+
+      return user;
+    });
   }
 
   @override
-  FutureEither<void> signOut() async {
-    try {
-      // Try to sign out remotely
-      try {
-        await _remoteDataSource.signOut();
-      } catch (_) {
-        // Ignore remote sign out errors (e.g. no network)
-        // We still want to clear local session
-      }
+  TaskResult<void> signOut() {
+    return ErrorHandler.execute(() async {
+      // Try to sign out remotely, but don't fail if it errors (e.g. offline)
+      await ErrorHandler.handleSafely(
+        () => _remoteDataSource.signOut(),
+        'Remote SignOut',
+      );
 
       // Clear tokens using TokenService
       await _tokenService.clearTokens();
 
-      // Clear cached user data
-      await _localDataSource.clearUserCache();
-
-      return const Right(null);
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+      // Clear cached user data (optional, don't fail if this fails)
+      await ErrorHandler.executeOrNull(() => _localDataSource.clearUserCache());
+    });
   }
 
   @override
-  FutureEither<User> getCurrentUser() async {
-    try {
+  TaskResult<User> getCurrentUser() {
+    return ErrorHandler.execute(() async {
       // Get user ID from token service
       final userId = await _tokenService.getUserId();
       if (userId == null) {
-        return const Left(Failure.unauthorizedFailure('User not logged in'));
+        throw UnauthorizedException('User not logged in');
       }
 
-      // Try cache first
-      final cachedUser = await _localDataSource.getCachedUser(userId);
+      // Try cache first (optional)
+      final cachedUser = await ErrorHandler.executeOrNull(
+        () => _localDataSource.getCachedUser(userId),
+      );
 
-      // Fetch from remote
       try {
+        // Fetch from remote
         final user = await _remoteDataSource.getCurrentUser();
-        await _localDataSource.cacheUser(user);
-        return Right(user);
+
+        // Update cache (optional, don't fail if this fails)
+        await ErrorHandler.executeOrNull(
+          () => _localDataSource.cacheUser(user),
+        );
+
+        return user;
       } catch (e) {
         // If remote fails (e.g. no internet), return cached user if available
         if (cachedUser != null) {
-          return Right(cachedUser);
+          return cachedUser;
         }
         rethrow;
       }
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+    });
   }
 
   @override
-  FutureEither<User> updateProfile(
-      String userId,
-      UpdateProfileRequest request,
-      ) async {
-    try {
+  TaskResult<User> updateProfile(String userId, UpdateProfileRequest request) {
+    return ErrorHandler.execute(() async {
       final user = await _remoteDataSource.updateProfile(userId, request);
-      await _localDataSource.cacheUser(user);
 
-      return Right(user);
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+      // Update cache (optional, don't fail if this fails)
+      await ErrorHandler.executeOrNull(() => _localDataSource.cacheUser(user));
+
+      return user;
+    });
   }
 
   @override
-  FutureEither<bool> isUsernameAvailable(String username) async {
-    try {
-      final isAvailable = await _remoteDataSource.isUsernameAvailable(username);
-      return Right(isAvailable);
-    } catch (e) {
-      return Left(ErrorHandler.handle(e));
-    }
+  TaskResult<bool> isUsernameAvailable(String username) {
+    return ErrorHandler.execute(() async {
+      return await _remoteDataSource.isUsernameAvailable(username);
+    });
   }
 
   @override

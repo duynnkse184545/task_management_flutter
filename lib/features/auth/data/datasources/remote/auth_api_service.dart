@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
-import 'package:task_management_flutter/core/config/api_config.dart';
 import 'package:task_management_flutter/features/auth/data/models/auth_models.dart';
-import 'package:task_management_flutter/features/auth/data/models/user_models.dart';
 
 part 'auth_api_service.g.dart';
 
